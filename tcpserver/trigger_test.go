@@ -5,6 +5,8 @@ import (
 	"io/ioutil"
 	"testing"
 
+	"github.com/project-flogo/core/action"
+	"github.com/project-flogo/core/support/test"
 	"github.com/project-flogo/core/trigger"
 	"github.com/stretchr/testify/assert"
 )
@@ -18,22 +20,21 @@ func getJSONMetadata() string {
 }
 
 const testConfig string = `{
-  "id": "tcpserver",
-  "ref": "github.com/tbtfcode/flogo/tcpserver",
-  "settings": {
-	"network": "tcp",
-	"host": "127.0.0.1",
-	"port": "8982"
-  },
-  "handlers": [
-    {
-      "settings": {
-      },
-      "action" {
-	     "id": "dummy"
-      }
-    }
-  ]
+    "id": "tcpserver",
+    "ref": "github.com/tbtfcode/flogo/tcpserver",
+    "Settings": {
+        "network": "tcp",
+        "host": "127.0.0.1",
+        "port": "8982"
+    },
+    "handlers": [
+        {
+            "settings": {},
+            "action": {
+                "id": "dummy"
+            }
+        }
+    ]
 }`
 
 func TestCreate(t *testing.T) {
@@ -45,14 +46,13 @@ func TestCreate(t *testing.T) {
 
 	config := &trigger.Config{}
 	err := json.Unmarshal([]byte(testConfig), config)
-	// assert.Nil(t, err)
+	assert.Nil(t, err)
 
-	// actions := map[string]action.Action{"dummy": test.NewDummyAction(func() {
-	// 	//do nothing
-	// })}
+	actions := map[string]action.Action{"dummy": test.NewDummyAction(func() {
+		//do nothing
+	})}
 
-	// trg, err := test.InitTrigger(f, config, actions)
-	trg, err := f.New(config)
+	trg, err := test.InitTrigger(f, config, actions)
 	assert.Nil(t, err)
 	assert.NotNil(t, trg)
 
