@@ -16,22 +16,16 @@ type TCPTrigger struct {
 
 // TCPTriggerFactory My Trigger factory
 type TCPTriggerFactory struct {
-	metadata *trigger.Metadata
-}
-
-// NewFactory create a new Trigger factory
-func NewFactory(md *trigger.Metadata) trigger.Factory {
-	return &TCPTriggerFactory{metadata: md}
-}
-
-// New Creates a new trigger instance for a given id
-func (t *TCPTriggerFactory) New(config *trigger.Config) trigger.Trigger {
-	return &TCPTrigger{metadata: t.metadata, config: config}
 }
 
 // Metadata implements trigger.Trigger.Metadata
 func (t *TCPTrigger) Metadata() *trigger.Metadata {
 	return t.metadata
+}
+
+// New Creates a new trigger instance for a given id
+func (t *TCPTriggerFactory) New(config *trigger.Config) (trigger.Trigger, error) {
+	return &TCPTrigger{config: config}, nil
 }
 
 // Initialize implements trigger.Init.Initialize
