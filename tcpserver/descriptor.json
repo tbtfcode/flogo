@@ -11,8 +11,7 @@
           "name": "network",
           "type": "string",
           "description": "Network type",
-          "allowed": ["tcp","tcp4","tcp6","udp","udp4","udp6"
-          ],
+          "allowed": ["tcp","tcp4","tcp6","udp","udp4","udp6"],
           "value": "tcp"
       },
       {
