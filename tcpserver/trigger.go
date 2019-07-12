@@ -1,8 +1,7 @@
 package tcpserver
 
 import (
-	"bufio"
-	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -91,7 +90,8 @@ func (t *Trigger) connectionWaiting() {
 			}
 			return
 		} else {
-			t.logger.Debugf("Handling new connection from client - %s", conn.RemoteAddr().String())
+			t.logger.Infof("Handling new connection from client - %s", conn.RemoteAddr().String())
+			// defer conn.Close()
 			// Handle connections in a new goroutine.
 			go t.connectionHandler(conn)
 		}
@@ -100,8 +100,8 @@ func (t *Trigger) connectionWaiting() {
 
 // Start implements trigger.Trigger.Start
 func (t *Trigger) Start() error {
-	go t.connectionWaiting()
 	t.logger.Infof("Started listener on Port - %s, Network - %s", t.settings.Port, t.settings.Network)
+	go t.connectionWaiting()
 	return nil
 }
 
@@ -110,87 +110,118 @@ func (t *Trigger) connectionHandler(conn net.Conn) {
 	//Gather connection list for later cleanup
 	t.connections = append(t.connections, conn)
 
+	recvBuf := make([]byte, 10240)
 	for {
 
+		t.logger.Infof("Register to Client: %d", len(t.connections))
+		t.logger.Infof("Setting delimiter : %s", t.settings.Delimiter)
+		t.logger.Infof("Setting timeout   : %d", t.settings.TimeOut)
 		if t.settings.TimeOut > 0 {
-			t.logger.Info("Setting timeout: ", t.settings.TimeOut)
 			conn.SetDeadline(time.Now().Add(time.Duration(t.settings.TimeOut) * time.Millisecond))
 		}
 
 		output := &Output{}
 
-		if t.delimiter != 0 {
-			data, err := bufio.NewReader(conn).ReadBytes(t.delimiter)
-			if err != nil {
-				errString := err.Error()
-				if !strings.Contains(errString, "use of closed network connection") {
-					t.logger.Error("Error reading data from connection: ", err.Error())
-				} else {
-					t.logger.Info("Connection is closed.")
-				}
-				if nerr, ok := err.(net.Error); !ok || !nerr.Timeout() {
-					// Return if not timeout error
-					return
-				}
-
-			} else {
-				output.Content = string(data[:len(data)-1])
+		n, err := conn.Read(recvBuf)
+		if err != nil {
+			if err == io.EOF {
+				t.logger.Error(err)
+				return
 			}
-		} else {
-			var buf bytes.Buffer
-			_, err := io.Copy(&buf, conn)
-			if err != nil {
-				errString := err.Error()
-				if !strings.Contains(errString, "use of closed network connection") {
-					t.logger.Error("Error reading data from connection: ", err.Error())
-				} else {
-					t.logger.Info("Connection is closed.")
-				}
-				if nerr, ok := err.(net.Error); !ok || !nerr.Timeout() {
-					// Return if not timeout error
-					return
-				}
-			} else {
-				output.Content = string(buf.Bytes())
-			}
+			t.logger.Error(err)
+			return
 		}
-		t.logger.Info(output.Content)
-		/*
-			if output.Content != "" {
-				var replyData []string
-				for i := 0; i < len(t.handlers); i++ {
-					results, err := t.handlers[i].Handle(context.Background(), output)
-					if err != nil {
-						t.logger.Error("Error invoking action : ", err.Error())
-						continue
-					}
-
-					reply := &Reply{}
-					err = reply.FromMap(results)
-					if err != nil {
-						t.logger.Error("Failed to convert flow output : ", err.Error())
-						continue
-					}
-					if reply.Reply != "" {
-						replyData = append(replyData, reply.Reply)
-					}
+		if n > 0 {
+			data := recvBuf[:n]
+			// t.logger.Info(string(data))
+			output.Content = string(data)
+			/*
+				_, err = conn.Write(data[:n])
+				if err != nil {
+					t.logger.Error(err)
+					return
 				}
-
-				if len(replyData) > 0 {
-					replyToSend := strings.Join(replyData, string(t.delimiter))
-					// Send a response back to client contacting us.
-					_, err := conn.Write([]byte(replyToSend + "\n"))
-					if err != nil {
-						t.logger.Error("Failed to write to connection : ", err.Error())
+			*/
+		}
+		/*
+			if t.delimiter != 0 {
+				t.logger.Info("Set Delimiter")
+				data, err := bufio.NewReader(conn).ReadBytes(t.delimiter)
+				if err != nil {
+					errString := err.Error()
+					if !strings.Contains(errString, "use of closed network connection") {
+						t.logger.Error("Error reading data from connection: ", err.Error())
+					} else {
+						t.logger.Info("Connection is closed.")
 					}
+					if nerr, ok := err.(net.Error); !ok || !nerr.Timeout() {
+						// Return if not timeout error
+						return
+					}
+
+				} else {
+					output.Content = string(data[:len(data)-1])
+				}
+			} else {
+				t.logger.Info("Non Delimiter")
+				var buf bytes.Buffer
+				_, err := io.Copy(&buf, conn)
+				if err != nil {
+					errString := err.Error()
+					if !strings.Contains(errString, "use of closed network connection") {
+						t.logger.Error("Error reading data from connection: ", err.Error())
+					} else {
+						t.logger.Info("Connection is closed.")
+					}
+					if nerr, ok := err.(net.Error); !ok || !nerr.Timeout() {
+						// Return if not timeout error
+						return
+					}
+				} else {
+					output.Content = string(buf.Bytes())
 				}
 			}
 		*/
+		t.logger.Info(output.Content)
+
+		if output.Content != "" {
+			//			var replyData []string
+			var replyData string
+			for i := 0; i < len(t.handlers); i++ {
+				results, err := t.handlers[i].Handle(context.Background(), output)
+				if err != nil {
+					t.logger.Error("Error invoking action : ", err.Error())
+					continue
+				}
+
+				reply := &Reply{}
+				err = reply.FromMap(results)
+				if err != nil {
+					t.logger.Error("Failed to convert flow output : ", err.Error())
+					continue
+				}
+				if reply.Data != "" {
+					// replyData = append(replyData, reply.Data)
+					replyData = reply.Data
+				}
+			}
+
+			if len(replyData) > 0 {
+				// replyToSend := strings.Join(replyData, "")
+				// Send a response back to client contacting us.
+				// _, err := conn.Write([]byte(replyToSend + "\n"))
+				_, err := conn.Write([]byte(replyData + "\n"))
+				if err != nil {
+					t.logger.Error("Failed to write to connection : ", err.Error())
+				}
+			}
+		}
 	}
 }
 
 // Stop implements trigger.Trigger.Start
 func (t *Trigger) Stop() error {
+	t.logger.Info("Stopped listener")
 
 	for i := 0; i < len(t.connections); i++ {
 		t.connections[i].Close()
@@ -201,8 +232,6 @@ func (t *Trigger) Stop() error {
 	if t.listener != nil {
 		t.listener.Close()
 	}
-
-	t.logger.Info("Stopped listener")
 
 	return nil
 }
